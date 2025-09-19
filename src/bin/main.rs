@@ -9,16 +9,23 @@
 use defmt::info;
 use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
+use embassy_net::{DhcpConfig, StackResources};
 use esp_hal::clock::CpuClock;
 use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::timer::timg::TimerGroup;
+use esp_wifi::EspWifiController;
 use {esp_backtrace as _, esp_println as _};
+
+use garage_door_v2::mk_static;
+use garage_door_v2::wifi::{connection, net_task, wait_for_connection};
 
 extern crate alloc;
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
+
+const NUM_SOCKETS: usize = 4;
 
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) {
@@ -34,15 +41,28 @@ async fn main(spawner: Spawner) {
 
     info!("Embassy initialized!");
 
-    let rng = esp_hal::rng::Rng::new(peripherals.RNG);
+    let mut rng = esp_hal::rng::Rng::new(peripherals.RNG);
     let timer1 = TimerGroup::new(peripherals.TIMG0);
-    let wifi_init =
-        esp_wifi::init(timer1.timer0, rng).expect("Failed to initialize WIFI/BLE controller");
-    let (mut _wifi_controller, _interfaces) = esp_wifi::wifi::new(&wifi_init, peripherals.WIFI)
+    let wifi_init = &*mk_static!(
+        EspWifiController<'static>,
+        esp_wifi::init(timer1.timer0, rng).expect("Failed to initialize WIFI/BLE controller")
+    );
+    let (wifi_controller, interfaces) = esp_wifi::wifi::new(wifi_init, peripherals.WIFI)
         .expect("Failed to initialize WIFI controller");
+    let wifi_interface = interfaces.sta;
+    let net_seed = rng.random() as u64 | ((rng.random() as u64) << 32);
+    let net_config = embassy_net::Config::dhcpv4(DhcpConfig::default());
 
-    // TODO: Spawn some tasks
-    let _ = spawner;
+    let (stack, runner) = embassy_net::new(
+        wifi_interface,
+        net_config,
+        mk_static!(StackResources<NUM_SOCKETS>, StackResources::<NUM_SOCKETS>::new()),
+        net_seed,
+    );
+
+    spawner.spawn(connection(wifi_controller)).ok();
+    spawner.spawn(net_task(runner)).ok();
+    wait_for_connection(stack).await;
 
     loop {
         info!("Hello world!");
