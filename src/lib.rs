@@ -1,5 +1,8 @@
 #![no_std]
 pub mod wifi;
+pub mod sensor;
+pub mod mqtt;
+
 
 #[macro_export]
 macro_rules! mk_static {

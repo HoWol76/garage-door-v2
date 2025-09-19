@@ -3,6 +3,8 @@ fn main() {
     println!("cargo:rustc-link-arg=-Tdefmt.x");
     // make sure linkall.x is the last linker script (otherwise might cause problems with flip-link)
     println!("cargo:rustc-link-arg=-Tlinkall.x");
+    
+    // load environment variables from .env file
     println!("cargo:rerun-if-changed={}", dotenv::dotenv().unwrap().display());
     for (key, value) in dotenv::vars() {
         println!("cargo:rustc-env={}={}", key, value);

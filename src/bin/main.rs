@@ -15,9 +15,11 @@ use esp_hal::timer::systimer::SystemTimer;
 use esp_hal::timer::timg::TimerGroup;
 use esp_wifi::EspWifiController;
 use {esp_backtrace as _, esp_println as _};
+use mcutie::Topic::Device;
 
 use garage_door_v2::mk_static;
 use garage_door_v2::wifi::{connection, net_task, wait_for_connection};
+// use garage_door_v2::mqtt::mqtt_connection_task;
 
 extern crate alloc;
 
@@ -34,7 +36,7 @@ async fn main(spawner: Spawner) {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
-    esp_alloc::heap_allocator!(size: 64 * 1024);
+    esp_alloc::heap_allocator!(size: 80 * 1024);
 
     let timer0 = SystemTimer::new(peripherals.SYSTIMER);
     esp_hal_embassy::init(timer0.alarm0);
@@ -64,9 +66,32 @@ async fn main(spawner: Spawner) {
     spawner.spawn(net_task(runner)).ok();
     wait_for_connection(stack).await;
 
+    let subscribed_topics = [
+        Device("door1_trigger"),
+        Device("door2_trigger"),
+    ];
+    let mqtt_client: mcutie::McutieBuilder<'static, &'static str,
+    mcutie::PublishBytes<'static, &'static str, &'static [u8]>, 2> = 
+        mcutie::McutieBuilder::new(
+            stack,
+            env!("MQTT_DEVICE_TYPE"), 
+            env!("MQTT_BROKER")
+        )
+        .with_subscriptions(subscribed_topics)
+        .with_authentication(env!("MQTT_USER"), env!("MQTT_PASSWD"))
+        .with_device_id(env!("MQTT_DEVICE_NAME"));
+
+    let (receiver, mqtt_task) = mqtt_client.build();
+    // spawner.spawn(mqtt_connection_task(receiver)).ok();
+
+    let sensor1 = garage_door_v2::sensor::Sensor::new(peripherals.GPIO4.into(), "door1");
+    spawner.spawn(garage_door_v2::sensor::sensor_monitoring_task(sensor1)).ok();
+
+    mqtt_task.run().await;
+
     loop {
-        info!("Hello world!");
-        Timer::after(Duration::from_secs(1)).await;
+        Timer::after(Duration::from_secs(2)).await;
+        info!("Main loop heartbeat");
     }
 
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-rc.0/examples/src/bin
