@@ -19,7 +19,7 @@ use mcutie::Topic::Device;
 
 use garage_door_v2::mk_static;
 use garage_door_v2::wifi::{connection, net_task, wait_for_connection};
-// use garage_door_v2::mqtt::mqtt_connection_task;
+use garage_door_v2::mqtt::mqtt_connection_task;
 
 extern crate alloc;
 
@@ -82,7 +82,7 @@ async fn main(spawner: Spawner) {
         .with_device_id(env!("MQTT_DEVICE_NAME"));
 
     let (receiver, mqtt_task) = mqtt_client.build();
-    // spawner.spawn(mqtt_connection_task(receiver)).ok();
+    spawner.spawn(mqtt_connection_task(receiver)).ok();
 
     let sensor1 = garage_door_v2::sensor::Sensor::new(peripherals.GPIO4.into(), "door1");
     spawner.spawn(garage_door_v2::sensor::sensor_monitoring_task(sensor1)).ok();
