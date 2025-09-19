@@ -1,23 +1,18 @@
 use defmt::info;
 use mcutie::{McutieReceiver, MqttMessage, Topic::{self, DeviceType, General, Device}};
+use crate::actuator::Actuator;
 
 #[embassy_executor::task]
-pub async fn mqtt_connection_task(receiver: McutieReceiver) {
+pub async fn mqtt_connection_task(receiver: McutieReceiver, mut actuator1: Actuator) {
     loop {
         let msg = receiver.receive().await;
-        match msg {
-            MqttMessage::Connected => info!("MQTT connected"),
-            MqttMessage::Disconnected => info!("MQTT disconnected"),
-            MqttMessage::Publish ( topic, payload ) => {
-                if let Ok(s) = core::str::from_utf8(&payload) {
-                    match topic {
-                        DeviceType(t) => info!("Received device type: {} <- {}", t.as_str(), s),
-                        Device(t) => info!("Received device: {} <- {}", t.as_str(), s),
-                        General(t) => info!("Received general message: {} <- {}", t.as_str(), s),
-                    }
+        if let MqttMessage::Publish ( Topic::Device(ref t), ref payload ) = msg {
+            if let Ok(s) = core::str::from_utf8(&payload) {
+                info!("Received device: {} <- {}", t.as_str(), s);
+                if t.as_str() == "door1_trigger" && s == "activate" {
+                    actuator1.toggle().await;
                 }
             }
-            MqttMessage::HomeAssistantOnline => info!("Home Assistant is online"),
         }
     }
 }

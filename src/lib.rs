@@ -2,6 +2,8 @@
 pub mod wifi;
 pub mod sensor;
 pub mod mqtt;
+pub mod actuator;
+
 
 
 #[macro_export]
