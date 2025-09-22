@@ -4,17 +4,20 @@ use embassy_time::{Duration, Timer};
 
 const TOGGLE_PULSE_DURATION: Duration = Duration::from_millis(200);
 
+/// Simple relay actuator that drives a GPIO high for a short pulse.
 pub struct Actuator {
     pin: Output<'static>,
 }
 
 impl Actuator {
+    /// Create a new actuator from a raw pin. Pin is initialised low.
     pub fn new(pin: AnyPin<'static>) -> Self {
         Self {
             pin: Output::new(pin, Level::Low, OutputConfig::default()),
         }
     }
   
+    /// Toggle the relay: set pin high for a short pulse, then low again.
     pub async fn toggle(&mut self) {
         info!("Actuator: Toggling relay");
         self.pin.set_high();
@@ -22,9 +25,3 @@ impl Actuator {
         self.pin.set_low();
     }
 }
-
-// /// Simple actuator toggle task that can be spawned
-// #[embassy_executor::task]
-// pub async fn actuator_toggle_task(mut actuator: Actuator) {
-//     actuator.toggle().await;
-// }

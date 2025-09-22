@@ -34,12 +34,15 @@ impl From<bool> for DoorState {
     }
 }
 
+/// Simple door sensor that reads a GPIO input pin.
 pub struct Sensor {
     pin: Input<'static>,
     name: &'static str,
 }
 
 impl Sensor {
+    /// Create a new sensor from a raw pin. Pin is initialised with pull-up.
+    /// name is stored to be used in MQTT topic.
     pub fn new(pin: AnyPin<'static>, name: &'static str) -> Self {
         Self {
             pin: Input::new(pin, InputConfig::default().with_pull(Pull::Up)),
@@ -52,6 +55,7 @@ impl Sensor {
         self.pin.is_high().into()
     }
   
+    /// Wait until door reaches desired state
     pub async fn wait_for_state(&self, desired_state: DoorState) {
         loop {
             if self.read_state() == desired_state {
@@ -61,6 +65,7 @@ impl Sensor {
         }
     }
 
+    /// Wait until door state changes, then debounce
     pub async fn wait_for_change(&self) {
         let initial_state = self.read_state();
         loop {
@@ -73,6 +78,8 @@ impl Sensor {
     }
 }
 
+/// Sensor monitoring task that can be spawned.
+/// Publishes state changes to MQTT.
 #[embassy_executor::task]
 pub async fn sensor_monitoring_task(sensor: Sensor) {
     info!("Sensor monitoring task starting");
