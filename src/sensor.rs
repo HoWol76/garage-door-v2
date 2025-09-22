@@ -1,39 +1,55 @@
-use defmt::info;
-use heapless::String;
+use defmt::{info, Format};
 use esp_hal::gpio::{Input, AnyPin, InputConfig, Pull};
 use embassy_time::{Duration, Timer};
 use mcutie::Topic::Device;
 use mcutie::Publishable as _;
 
-
 const DEBOUNCE_DURATION: Duration = Duration::from_millis(50);
+const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Format)]
 pub enum DoorState {
-    OPEN,
-    CLOSED
+    Open,
+    Closed
+}
+
+impl core::fmt::Display for DoorState {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            DoorState::Open => write!(f, "open"),
+            DoorState::Closed => write!(f, "closed"),
+        }
+    }
+}
+
+// Convert GPIO high/low to DoorState
+// Assuming HIGH = True = Open.
+impl From<bool> for DoorState {
+    fn from(value: bool) -> Self {
+        if value {
+            DoorState::Open
+        } else {
+            DoorState::Closed
+        }
+    }
 }
 
 pub struct Sensor {
     pin: Input<'static>,
-    name: String<32>,
+    name: &'static str,
 }
 
 impl Sensor {
-    pub fn new(pin: AnyPin<'static>, name: &str) -> Self {
+    pub fn new(pin: AnyPin<'static>, name: &'static str) -> Self {
         Self {
             pin: Input::new(pin, InputConfig::default().with_pull(Pull::Up)),
-            name: name.try_into().unwrap(),
+            name: name,
         }
     }
   
     /// Check current door state
     pub fn read_state(&self) -> DoorState {
-        if self.pin.is_high() {
-            DoorState::OPEN
-        } else {
-            DoorState::CLOSED
-        }
+        self.pin.is_high().into()
     }
   
     pub async fn wait_for_state(&self, desired_state: DoorState) {
@@ -41,30 +57,33 @@ impl Sensor {
             if self.read_state() == desired_state {
                 break;
             }
-            Timer::after(Duration::from_millis(50)).await;
+            Timer::after(POLL_INTERVAL).await;
         }
+    }
+
+    pub async fn wait_for_change(&self) {
+        let initial_state = self.read_state();
+        loop {
+            if self.read_state() != initial_state {
+                break;
+            }
+            Timer::after(POLL_INTERVAL).await;
+        }
+        Timer::after(DEBOUNCE_DURATION).await;
     }
 }
 
 #[embassy_executor::task]
 pub async fn sensor_monitoring_task(sensor: Sensor) {
     info!("Sensor monitoring task starting");
-  
-    if sensor.read_state() == DoorState::OPEN {
-        Timer::after(DEBOUNCE_DURATION).await;
-        let _ = Device(sensor.name.as_str()).with_display("open").publish().await;
-        info!("Sensor {} initial state: open", sensor.name);
-    }
-  
+    Timer::after(Duration::from_secs(1)).await; // wait for other tasks to initialize
     loop {
-        sensor.wait_for_state(DoorState::CLOSED).await;
-        Timer::after(DEBOUNCE_DURATION).await;
-        let _ = Device(sensor.name.as_str()).with_display("closed").publish().await;
-        info!("Sensor {} event: closed", sensor.name);
-  
-        sensor.wait_for_state(DoorState::OPEN).await;
-        Timer::after(DEBOUNCE_DURATION).await;
-        let _ = Device(sensor.name.as_str()).with_display("open").publish().await;
-        info!("Sensor {} event: open", sensor.name);
+        let state = sensor.read_state();
+        info!("Sensor state changed: {}", state);
+        let _ = Device(sensor.name)
+            .with_display(state)
+            .publish()
+            .await;
+        sensor.wait_for_change().await;
     }
 }
