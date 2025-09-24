@@ -87,9 +87,9 @@ async fn main(spawner: Spawner) {
     let sensor1 = garage_door_v2::sensor::Sensor::new(peripherals.GPIO4.into(), "door1");
     spawner.spawn(garage_door_v2::sensor::sensor_monitoring_task(sensor1)).ok();
 
-    let mut actuator1 = Actuator::new(peripherals.GPIO2.into());
+    let actuator1 = Actuator::new(peripherals.GPIO2.into(), "door1");
 
-    spawner.spawn(mqtt_connection_task(receiver, actuator1)).ok();
+    spawner.spawn(mqtt_connection_task(receiver, [actuator1])).ok();
     mqtt_task.run().await;
 
     loop {

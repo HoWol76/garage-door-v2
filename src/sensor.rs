@@ -23,7 +23,7 @@ impl core::fmt::Display for DoorState {
 }
 
 // Convert GPIO high/low to DoorState
-// Assuming HIGH = True = Open.
+/// Assuming HIGH = True = Open.
 impl From<bool> for DoorState {
     fn from(value: bool) -> Self {
         if value {

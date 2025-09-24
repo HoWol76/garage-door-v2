@@ -7,13 +7,15 @@ const TOGGLE_PULSE_DURATION: Duration = Duration::from_millis(200);
 /// Simple relay actuator that drives a GPIO high for a short pulse.
 pub struct Actuator {
     pin: Output<'static>,
+    name: &'static str,
 }
 
 impl Actuator {
     /// Create a new actuator from a raw pin. Pin is initialised low.
-    pub fn new(pin: AnyPin<'static>) -> Self {
+    pub fn new(pin: AnyPin<'static>, name: &'static str) -> Self {
         Self {
             pin: Output::new(pin, Level::Low, OutputConfig::default()),
+            name,
         }
     }
   
@@ -23,5 +25,10 @@ impl Actuator {
         self.pin.set_high();
         Timer::after(TOGGLE_PULSE_DURATION).await;
         self.pin.set_low();
+    }
+
+    /// Get the name of this actuator (for matching MQTT topics)
+    pub fn name(&self) -> &str {
+        self.name
     }
 }
